@@ -14,23 +14,45 @@ import java.util.List;
 
 public class ClassForExecutingTests {
 
-    public static void star(Class testClass) throws NoSuchMethodException {
+    static List<Method> arrayPriority = new ArrayList<>();
+    static boolean beforeFlag;
+    static boolean afterFlag;
+
+    public static void start(Class testClass) throws NoSuchMethodException {
 
         Constructor constructor = testClass.getConstructor();
-
-        boolean beforeFlag;
-        boolean afterFlag;
         Method[] methods = testClass.getDeclaredMethods();
-        List<Method> methodList = new ArrayList<>(Arrays.asList(methods));
-        beforeFlag = methodList.removeIf(method -> method.isAnnotationPresent(BeforeSuite.class));
-        afterFlag = methodList.removeIf(method -> method.isAnnotationPresent(AfterSuite.class));
 
-        checkReplaceAnnotation(beforeFlag, afterFlag, methodList);
+        checkReplaceAnnotation(methods);
         startBeforeMethod(beforeFlag, methods, constructor);
 
         for (Method method : methods) {
             if (method.isAnnotationPresent(Test.class)){
-                invokeMethod(constructor, method);
+                createdArrayPriority(method);
+            }
+        }
+        for (Method method : arrayPriority) {
+            System.out.println("Приоритет тестирования метода - " + method.getAnnotation(Test.class).priority());
+            invokeMethod(constructor, method);
+        }
+
+        startAfterMethod(afterFlag, methods, constructor);
+    }
+
+    private static void createdArrayPriority(Method method) {
+        int currentPriority = method.getAnnotation(Test.class).priority();
+        int arrSize = arrayPriority.size();
+        if (arrSize == 0){
+            arrayPriority.add(method);
+        } else {
+            for (int i = 0; i < arrSize; i++) {
+                if (arrayPriority.get(i).getAnnotation(Test.class).priority() <= currentPriority) {
+                    arrayPriority.add(i, method);
+                    break;
+                }
+                if (i == arrSize - 1){
+                    arrayPriority.add(method);
+                }
             }
         }
     }
@@ -51,9 +73,19 @@ public class ClassForExecutingTests {
         }
     }
 
-    private static void checkReplaceAnnotation(boolean beforeFlag, boolean afterFlag, List<Method> methodList) {
-        if (beforeFlag || afterFlag){
-            if (methodList.removeIf(method -> method.isAnnotationPresent(BeforeSuite.class)) || methodList.removeIf(method -> method.isAnnotationPresent(AfterSuite.class))){
+    private static void checkReplaceAnnotation(Method[] methods) {
+        int beforeCount = 0;
+        int afterCount = 0;
+        for (Method method : methods) {
+            if (method.isAnnotationPresent(BeforeSuite.class)){
+                beforeCount++;
+                beforeFlag = true;
+            }
+            if (method.isAnnotationPresent(AfterSuite.class)){
+                afterCount++;
+                afterFlag = true;
+            }
+            if (beforeCount == 2 || afterCount == 2){
                 throw new RuntimeException("В тестируемом классе более одного метода, помеченных анотацией @BeforeSuite либо @AfterSuite");
             }
         }
@@ -63,6 +95,16 @@ public class ClassForExecutingTests {
         if (beforeFlag){
             for (Method method : methods) {
                 if (method.isAnnotationPresent(BeforeSuite.class)){
+                    invokeMethod(constructor, method);
+                }
+            }
+        }
+    }
+
+    private static void startAfterMethod(boolean afterFlag, Method[] methods, Constructor constructor) {
+        if (afterFlag){
+            for (Method method : methods) {
+                if (method.isAnnotationPresent(AfterSuite.class)){
                     invokeMethod(constructor, method);
                 }
             }
